@@ -110,37 +110,5 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
     expirationTtl: 86400 * 7,
   });
 
-  // ── Auto-index published sandboxes onto the public /S listing ──
-  // PRD flow: sandbox publish (owner-approved) → auto-showcase at
-  // https://pocwu.pages.dev/S. Publishing writes a `public-server:`
-  // KV record consumed by GET /api/public/servers; stopping removes it.
-  const listKey = `public-server:sandbox-${sandbox.id}`;
-  if (sandbox.status === "preview") {
-    await kv.put(
-      listKey,
-      JSON.stringify({
-        id: `sandbox-${sandbox.id}`,
-        name: sandbox.name,
-        type: "sandbox-preview",
-        url: `https://pocwu.pages.dev/s/${encodeURIComponent(sandbox.org)}/${encodeURIComponent(sandbox.name)}`,
-        owner: ABSUP_LOGIN,
-        status: "online",
-        region: "Global (Cloudflare Edge)",
-        version: "1.0.0-EA",
-        description: `Auto-indexed sandbox preview for "${sandbox.name}" (org sandbox ${sandbox.id.slice(0, 8)}).`,
-        tags: ["sandbox", "preview", "published"],
-        uptime: 100,
-        lastSeen: sandbox.updatedAt,
-        createdAt: sandbox.updatedAt,
-      }),
-      { expirationTtl: 86400 * 90 }, // 90-day TTL like other listings
-    );
-  } else if (sandbox.status === "stopped") {
-    await kv.delete(listKey);
-  }
-
   return json({ sandbox });
 };
-
-/** Owner account shown on public server listings (ABsUP). */
-const ABSUP_LOGIN = "ABsUP";

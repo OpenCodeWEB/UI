@@ -2,13 +2,15 @@
  * GunDB client singleton — P2P graph database with IndexedDB persistence.
  *
  * Architecture:
- *   Browser Tab A  ←→  [IndexedDB / SharedWorker]  ←→  Browser Tab B
- *        ↕                                          ↕
- *   Cloudflare REST API                    Cloudflare REST API
+ *   Browser Tab A  ←─wss─→  [GunDB Relay wss://absup:8765/gun]  ←─wss─→  Browser Tab B
+ *        ↕                                              ↕
+ *   IndexedDB (offline-first)                 Cloudflare REST API
  *
- * Future: WebSocket relay for cross-user real-time sync.
+ * Relay source: github.com/OpenCodeWEB/Gun (see OS/gun-relay/relay.js)
+ * SEA (Security, Encryption, Authorization) is loaded for E2EE user data.
  */
 import Gun from "gun";
+import "gun/sea";
 
 // Re-export Gun for convenience
 export { Gun };
@@ -48,18 +50,39 @@ export interface GunComment {
 let _gun: ReturnType<typeof Gun> | null = null;
 
 /**
+ * Relay endpoints for cross-user real-time sync.
+ * - GUN_RELAY_URLS env override (comma-separated) for custom deployments
+ * - Default: the OpenCodeWEB OS local relay (wss://absup:8765/gun)
+ */
+const RELAY_URLS = (
+  import.meta.env.VITE_GUN_RELAY_URLS ||
+  "wss://absup:8765/gun"
+)
+  .split(",")
+  .map((s: string) => s.trim())
+  .filter(Boolean);
+
+/**
  * Get or create the GunDB singleton.
- * Data is persisted to IndexedDB automatically.
+ * Data is persisted to IndexedDB automatically and synced across
+ * peers through the configured relay(s).
  */
 export function getGun(): ReturnType<typeof Gun> {
   if (!_gun) {
     _gun = Gun({
       localStorage: true,
-      peers: [],
+      peers: RELAY_URLS,
       radisk: true,
     });
   }
   return _gun;
+}
+
+/**
+ * List configured relay URLs.
+ */
+export function getRelayUrls(): string[] {
+  return [...RELAY_URLS];
 }
 
 /**
