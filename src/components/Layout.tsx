@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, Suspense } from "react";
 import { Outlet, Link, useLocation } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
+import { useGunPresence } from "../hooks/useGunPresence";
 import Footer from "./Footer";
 
 const NAV_LINKS = [
@@ -122,6 +123,9 @@ function UserMenu() {
 export default function Layout() {
   const location = useLocation();
   const { user, loading, login } = useAuth();
+
+  // GunX network presence: publish profile + heartbeat while signed in
+  useGunPresence();
 
   return (
     <div className="flex min-h-screen flex-col bg-surface">

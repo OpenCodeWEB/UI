@@ -9,6 +9,11 @@ import {
 import { Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { timeAgo } from "../utils/users-time-ago.js";
+import {
+  isOnline,
+  subscribeGunxUsers,
+  type GunxUserRecord,
+} from "../lib/gunx";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -22,6 +27,8 @@ interface UserEntry {
   status: "online" | "offline";
   lastSeen: string;
   joinedAt: string;
+  /** Where this entry came from: GunX global graph or the KV sessions API */
+  source: "gunx" | "api";
 }
 
 const POLL_INTERVAL = 10_000; // refresh online status every 10 s
@@ -196,6 +203,14 @@ const UserCard = memo(function UserCard({
             {user.name}
           </span>
           <span className="shrink-0 text-xs text-slate-500">@{user.login}</span>
+          {user.source === "gunx" && (
+            <span
+              className="shrink-0 rounded-full border border-sky-500/25 bg-sky-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-sky-400"
+              title="Presence from the GunX global network graph"
+            >
+              GunX
+            </span>
+          )}
           {isYou && (
             <span className="shrink-0 rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-sky-300">
               You
@@ -261,7 +276,8 @@ function EmptyState({
             No users yet
           </h3>
           <p className="mt-1 text-sm text-slate-500">
-            Users will appear here once they authenticate via GitHub OAuth.
+            Be the first in the GunX network — sign in with GitHub and your
+            presence goes live here instantly.
           </p>
         </>
       )}
@@ -274,7 +290,8 @@ function EmptyState({
 /* ------------------------------------------------------------------ */
 
 export default function Users() {
-  const [users, setUsers] = useState<UserEntry[]>([]);
+  const [apiUsers, setApiUsers] = useState<UserEntry[]>([]);
+  const [gunxUsers, setGunxUsers] = useState<Record<string, GunxUserRecord>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -301,7 +318,7 @@ export default function Users() {
       const r = await fetch("/api/users", { signal: controller.signal });
       if (!r.ok) throw new Error("Failed to fetch users");
       const data = (await r.json()) as { users: UserEntry[] };
-      setUsers(data.users);
+      setApiUsers(data.users.map((u) => ({ ...u, source: "api" as const })));
       setLastSync(new Date());
     } catch (err) {
       if ((err as Error).name !== "AbortError" && !silent) {
@@ -338,6 +355,47 @@ export default function Users() {
     };
   }, [fetchUsers]);
 
+  // ── Live GunX registry subscription (global network presence) ──
+  useEffect(() => {
+    const unsub = subscribeGunxUsers((patch) => {
+      setGunxUsers((prev) => ({ ...prev, ...patch }));
+    });
+    return unsub;
+  }, []);
+
+  /**
+   * Merge the GunX global registry with the KV API list.
+   * GunX entries win for the same login (live, network-wide presence);
+   * API-only sessions still appear as a fallback.
+   */
+  const users = useMemo<UserEntry[]>(() => {
+    const map = new Map<string, UserEntry>();
+    for (const u of apiUsers) map.set(u.login, u);
+
+    for (const [login, g] of Object.entries(gunxUsers)) {
+      const lastSeenTs = typeof g.lastSeen === "number"
+        ? g.lastSeen
+        : g.lastSeen ? new Date(g.lastSeen).getTime() : 0;
+      const lastSeen = lastSeenTs > 0 ? new Date(lastSeenTs).toISOString() : "";
+      const online = isOnline(g);
+      map.set(login, {
+        login,
+        id: g.id ?? 0,
+        avatar: g.avatar ?? "",
+        name: g.name || login,
+        status: online ? "online" : "offline",
+        lastSeen,
+        joinedAt: g.joinedAt || lastSeen || new Date(0).toISOString(),
+        source: "gunx",
+      });
+    }
+
+    return Array.from(map.values()).sort((a, b) => {
+      if (a.status !== b.status) return a.status === "online" ? -1 : 1;
+      return a.login.localeCompare(b.login);
+    });
+  }, [apiUsers, gunxUsers]);
+
   /* ── Derived data (memoized) ─────────────────────────────────── */
   const query = search.toLowerCase().trim();
 
@@ -366,6 +424,7 @@ export default function Users() {
   }, [users]);
 
   const currentLogin = currentUser?.login ?? "";
+  const gunxCount = Object.keys(gunxUsers).length;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white">
@@ -387,7 +446,7 @@ export default function Users() {
               </span>
             </h1>
             <p className="mt-3 text-slate-400">
-              Community directory — live GitHub presence
+              Community directory — live presence from the GunX network
             </p>
 
             {/* Live status chip */}
@@ -408,6 +467,14 @@ export default function Users() {
               <span className="text-slate-400">
                 {stats.total} user{stats.total === 1 ? "" : "s"}
               </span>
+              {gunxCount > 0 && (
+                <>
+                  <span className="mx-1 text-slate-600">•</span>
+                  <span className="font-medium text-sky-400">
+                    {gunxCount} via GunX
+                  </span>
+                </>
+              )}
               {lastSync && (
                 <>
                   <span className="mx-1 text-slate-600">•</span>
