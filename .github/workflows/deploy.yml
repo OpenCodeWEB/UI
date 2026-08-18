@@ -1,14 +1,14 @@
-# =============================================================================
-# OpenCodeWEBsUI — CI/CD Pipeline
+﻿# =============================================================================
+# OpenCodeWEBsUI â€” CI/CD Pipeline
 #
-# Runs on every push/PR to main:
+# Runs on every push/PR to Dev:
 #   1. Pre-mutation backup snapshot
 #   2. Install dependencies (UI + DO worker)
 #   3. TypeScript type check
 #   4. Polyglot validation (Rust, Python, GLSL)
 #   5. Vite production build
-#   6. Deploy DO Worker (GlobeRelay) — push to main only
-#   7. Deploy Pages (production) — push to main only
+#   6. Deploy DO Worker (GlobeRelay) â€” push to Dev only
+#   7. Deploy Pages (production) â€” push to Dev only
 #   8. Commit ledger updates with triple-authorship standard
 # =============================================================================
 
@@ -16,15 +16,15 @@ name: Deploy
 
 on:
   push:
-    branches: [main]
+    branches: [Dev]
   pull_request:
     types: [opened, synchronize]
   workflow_dispatch:
 
 jobs:
-  # ────────────────────────────────────────────────────────────────────────────
-  # Job 1 — Build, Validate & Audit
-  # ────────────────────────────────────────────────────────────────────────────
+  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  # Job 1 â€” Build, Validate & Audit
+  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   build-and-audit:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -34,13 +34,13 @@ jobs:
       issues: write
 
     steps:
-      # ── Step 1: Checkout ──────────────────────────────────────────────────
+      # â”€â”€ Step 1: Checkout â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # ── Step 2: Setup Node.js ─────────────────────────────────────────────
+      # â”€â”€ Step 2: Setup Node.js â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -50,37 +50,38 @@ jobs:
             package-lock.json
             do-worker/package-lock.json
 
-      # ── Step 3: Install dependencies ──────────────────────────────────────
+      # â”€â”€ Step 3: Install dependencies â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       - name: Install Dependencies
         run: |
           npm ci
           cd do-worker && npm ci
 
-      # ── Step 4: Pre-Mutation Backup Snapshot ──────────────────────────────
-      - name: Establish Pre-Mutation Backup Snapshot
+      # â”€â”€ Step 4: Pre-Mutation Restore Point â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      # One meaningful rolling backup branch: backup/restore-point always
+      # points at the last state before this run's mutation (force-updated
+      # on every run â€” no timestamp branch accumulation).
+      - name: Establish Pre-Mutation Restore Point
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TIMESTAMP=$(date +'%Y%m%d-%H%M%S')
-          RESTORE_BRANCH="backup/opencode-ui-${TIMESTAMP}"
-          echo "Creating backup snapshot branch: ${RESTORE_BRANCH}"
+          RESTORE_BRANCH="backup/restore-point"
+          echo "Updating restore point branch: ${RESTORE_BRANCH}"
 
           git config user.name "ABsUP"
           git config user.email "ABsUP@users.noreply.github.com"
 
-          git branch "${RESTORE_BRANCH}"
-          git push origin "${RESTORE_BRANCH}"
+          git branch -f "${RESTORE_BRANCH}" HEAD
+          git push --force origin "${RESTORE_BRANCH}"
 
           mkdir -p OpenCodeWEBsPRD
           cat >> OpenCodeWEBsPRD/ToDo.md <<-EOF
 
           ### Snapshot Ledger
-          - **Branch:** \`${RESTORE_BRANCH}\`
+          - **Restore point:** `${RESTORE_BRANCH}` â†’ `${{ github.sha }}`
           - **Date:** $(date)
-          - **Commit:** ${{ github.sha }}
           EOF
 
-      # ── Step 5: TypeScript Type Check ─────────────────────────────────────
+      # â”€â”€ Step 5: TypeScript Type Check â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       - name: TypeScript Check (UI)
         run: npx tsc --noEmit
 
@@ -89,13 +90,13 @@ jobs:
           cd do-worker
           npx tsc --noEmit
 
-      # ── Step 6: Polyglot Validation ───────────────────────────────────────
+      # â”€â”€ Step 6: Polyglot Validation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       - name: Validate Rust WASM Module
         run: |
           if [ -d "rswasm-globe-physics" ]; then
             cd rswasm-globe-physics && cargo check 2>&1 || echo "Rust check skipped (cargo not available or build issues)"
           else
-            echo "No rswasm-globe-physics directory — skipping Rust validation"
+            echo "No rswasm-globe-physics directory â€” skipping Rust validation"
           fi
 
       - name: Validate Python Data
@@ -103,7 +104,7 @@ jobs:
           if [ -f "scripts/generate_cities.py" ]; then
             python3 scripts/generate_cities.py --validate 2>&1 || echo "Python validation skipped or failed"
           else
-            echo "No generate_cities.py — skipping Python validation"
+            echo "No generate_cities.py â€” skipping Python validation"
           fi
 
       - name: Validate GLSL Shaders
@@ -112,16 +113,16 @@ jobs:
           if [ -d "$SHADER_DIR" ]; then
             COUNT=$(find "$SHADER_DIR" -name '*.vert' -o -name '*.frag' | wc -l)
             echo "Found $COUNT shader files"
-            find "$SHADER_DIR" -type f \( -name '*.vert' -o -name '*.frag' \) -exec echo "  ✓ {}" \;
+            find "$SHADER_DIR" -type f \( -name '*.vert' -o -name '*.frag' \) -exec echo "  âœ“ {}" \;
           else
-            echo "No shaders directory — skipping GLSL validation"
+            echo "No shaders directory â€” skipping GLSL validation"
           fi
 
-      # ── Step 7: Vite Production Build ─────────────────────────────────────
+      # â”€â”€ Step 7: Vite Production Build â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       - name: Build (Vite)
         run: npx vite build
 
-      # ── Step 7b: Secret Leak Prevention Scan ──────────────────────────────
+      # â”€â”€ Step 7b: Secret Leak Prevention Scan â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       - name: Secret Leak Prevention Scan
         run: |
           echo "Scanning for leaked credentials (AWS, GitHub, Slack, Stripe, Google, PEM keys)..."
@@ -148,12 +149,12 @@ jobs:
           scan 'sk_live_[0-9a-zA-Z]{16,}' "Stripe Secret Key"
           scan 'AIza[0-9A-Za-z_-]{35}' "Google API Key"
           if [ $FAIL -ne 0 ]; then
-            echo "::error::Secret leak scan failed — remove leaked credentials before committing."
+            echo "::error::Secret leak scan failed â€” remove leaked credentials before committing."
             exit 1
           fi
-          echo "✅ No leaked secrets detected."
+          echo "âœ… No leaked secrets detected."
 
-      # ── Step 8: Commit Ledger Updates ─────────────────────────────────────
+      # â”€â”€ Step 8: Commit Ledger Updates â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       - name: Commit Changes (Triple-Authorship Standard)
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
@@ -167,12 +168,12 @@ jobs:
           commit_user_name: "ABsUP"
           commit_user_email: "ABsUP@users.noreply.github.com"
 
-  # ────────────────────────────────────────────────────────────────────────────
-  # Job 2 — Deploy DO Worker (GlobeRelay)
-  # ────────────────────────────────────────────────────────────────────────────
+  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  # Job 2 â€” Deploy DO Worker (GlobeRelay)
+  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   deploy-do-worker:
     needs: build-and-audit
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/Dev'
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -197,12 +198,12 @@ jobs:
           cd do-worker
           npx wrangler deploy
 
-  # ────────────────────────────────────────────────────────────────────────────
-  # Job 3 — Deploy Pages (Production)
-  # ────────────────────────────────────────────────────────────────────────────
+  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  # Job 3 â€” Deploy Pages (Production)
+  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   deploy-pages:
     needs: build-and-audit
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/Dev'
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -227,3 +228,4 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
         run: |
           npx wrangler pages deploy dist --branch main --project-name pocwu
+
