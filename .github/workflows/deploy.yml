@@ -56,28 +56,29 @@ jobs:
           npm ci
           cd do-worker && npm ci
 
-      # ── Step 4: Pre-Mutation Backup Snapshot ──────────────────────────────
-      - name: Establish Pre-Mutation Backup Snapshot
+      # ── Step 4: Pre-Mutation Restore Point ────────────────────────────────
+      # One meaningful rolling backup branch: backup/restore-point always
+      # points at the last state before this run's mutation (force-updated
+      # on every run — no timestamp branch accumulation).
+      - name: Establish Pre-Mutation Restore Point
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TIMESTAMP=$(date +'%Y%m%d-%H%M%S')
-          RESTORE_BRANCH="backup/opencode-ui-${TIMESTAMP}"
-          echo "Creating backup snapshot branch: ${RESTORE_BRANCH}"
+          RESTORE_BRANCH="backup/restore-point"
+          echo "Updating restore point branch: ${RESTORE_BRANCH}"
 
           git config user.name "ABsUP"
           git config user.email "ABsUP@users.noreply.github.com"
 
-          git branch "${RESTORE_BRANCH}"
-          git push origin "${RESTORE_BRANCH}"
+          git branch -f "${RESTORE_BRANCH}" HEAD
+          git push --force origin "${RESTORE_BRANCH}"
 
           mkdir -p OpenCodeWEBsPRD
           cat >> OpenCodeWEBsPRD/ToDo.md <<-EOF
 
           ### Snapshot Ledger
-          - **Branch:** \`${RESTORE_BRANCH}\`
+          - **Restore point:** `${RESTORE_BRANCH}` → `${{ github.sha }}`
           - **Date:** $(date)
-          - **Commit:** ${{ github.sha }}
           EOF
 
       # ── Step 5: TypeScript Type Check ─────────────────────────────────────
