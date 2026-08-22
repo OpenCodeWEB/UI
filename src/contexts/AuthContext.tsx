@@ -6,6 +6,11 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
+import {
+  upsertUserRegistry,
+  startPresenceLoop,
+  stopPresenceLoop,
+} from "../lib/gdbx-directory";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -70,6 +75,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (body.authenticated && body.session) {
         setUser(body.session.user);
         setOrgs(body.session.orgs);
+        // Sovereign directory: permanent roster entry + live presence loop.
+        // Keeps the user visible on /U forever (online now, offline later) —
+        // immune to KV free-tier write/list budgets that broke the legacy path.
+        const u = body.session.user;
+        void upsertUserRegistry({
+          login: u.login,
+          id: u.id,
+          avatar: u.avatar,
+          name: u.name,
+        });
+        startPresenceLoop({
+          login: u.login,
+          id: u.id,
+          avatar: u.avatar,
+          name: u.name,
+        });
         return true;
       }
       return false;
@@ -118,6 +139,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // ── Logout ───────────────────────────────────────────────────────
   const logout = useCallback(async () => {
+    stopPresenceLoop();
     const token = localStorage.getItem(SESSION_KEY);
     if (token) {
       try {
